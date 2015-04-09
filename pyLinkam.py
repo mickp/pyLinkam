@@ -31,6 +31,7 @@ sys.path.append(DLL_PATH)
 clr.AddReference(r"LinkamCommsLibrary.dll")
 import LinkamCommsDll
 
+DEBUG=TRUE
 
 class _IntParser(object):
     _bitFields = {}
@@ -97,6 +98,8 @@ class _StageStatus(_IntParser):
 class LinkamStage(object):
     # Enumerated value types for SetValue and GetValue.
     eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
+    XMOTOR_BIT = 2**45
+    YMOTOR_BIT = 2**48
 
     def __init__(self):
         self.stage = LinkamCommsDll.Comms()
@@ -134,12 +137,26 @@ class LinkamStage(object):
 
 
     def moveToXY(self, x, y):
+        import time
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
         self.stage.SetValue(xValueID, x)
         self.stage.StartMotors(True, 0)
         self.stage.SetValue(yValueID, y)
         self.stage.StartMotors(True, 1)
+        stoppedCount = 0
+        maxCount = 3
+        if DEBUG:
+            print '3210' + 6 * '9876543210'
+        while stoppedCount < maxCount:
+            status = self.stage.GetStatus()
+            if DEBUG:
+                print bin(status).replace('0',' ').replace('b','').rjust(64)
+            if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
+                stoppedCount += 1
+            else:
+                stoppedCount = 0
+            time.sleep(0.5)
 
 
 def main():
