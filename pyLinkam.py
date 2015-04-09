@@ -95,64 +95,8 @@ class _StageStatus(_IntParser):
 
 
 class LinkamStage(object):
-    _valueTypes = [(0,  'Heater1TempR', '°C', 'r',),
-                   (1,  'Heater1RateRW', '°C/min', 'rw'),
-                   (2,  'Heater1LimitRW', '°C', 'rw'),
-                   (3,  'Heater1Power', '%', 'r'),
-                   (4,  'Heater1LnpSpeed', '%', 'r'),
-                   (5,  'Heater2TempR', '°C', 'r'),
-                   (6,  'Heater2RateRW', '°C/min', 'rw'),
-                   (7,  'Heater2LimitRW', '°C', 'rw'),
-                   (8,  'Heater2Power', '%', 'r'),
-                   (9,  'Heater2LnpSpeed', '%', 'r'),                   
-                   (10, 'CoolingWaterTempR', '°C', 'r'),
-                   (12, 'VacuumR', 'mbar', 'r'),
-                   (13, 'VacuumLimitRW', 'mbar', 'rw'),
-                   (14, 'HumidityR', '%rh', 'r'),
-                   (15, 'HumidityLimitRW', '%rh', 'rw'),
-                   (16, 'XMotorPosnR', 'µm', 'r'),
-                   (17, 'XMotorVelRW', 'µm/s', 'rw'),
-                   (18, 'XMotorLimitRW', 'µm', 'rw'),
-                   (19, 'YMotorPosnR', 'µm', 'r'),
-                   (20, 'YMotorVelRW', 'µm/s', 'rw'),
-                   (21, 'YMotorLimitRW', 'µm', 'rw'),
-                   (22, 'ZMotorPosnR', 'µm', 'r'),
-                   (23, 'ZMotorVelRW', 'µm/s', 'rw'),
-                   (24, 'ZMotorLimitRW', 'µm', 'rw'),
-                   (25, 'TstMotorPosnR', 'µm', 'r'),
-                   (26, 'TstMotorVelRW', 'µm/s', 'rw'),
-                   (27, 'TstMotorLimitRW', 'µm', 'rw'),
-                   (28, 'VacMotorPosnR', 'µm', 'r'),
-                   (29, 'VacMotorVelRW', 'µm/s', 'rw'),
-                   (30, 'VacMotorLimitRW', 'µm', 'rw'),
-                   (31, 'GsMotorPosnR', 'µm', 'r'),
-                   (32, 'GsMotorVelRW', 'µm/s', 'rw'),
-                   (33, 'GsMotorLimitRW', 'µm', 'r'),
-                   (34, 'SampleRefNegRW', '°C', 'rw'),
-                   (35, 'SampleActNegRW', '°C', 'rw'),
-                   (36, 'SampleRefZeroRW', '°C', 'rw'),
-                   (37, 'SampleActZeroRW', '°C', 'rw'),
-                   (38, 'SampleRefPosRW', '°C', 'rw'),
-                   (39, 'SampleActPosRW', '°C', 'rw'),
-                   (50, 'Heater3TempR', '°C', 'r'), # CMS196 Correlative Dewar temperature
-                   (51, 'Heater4TempR', '°C', 'r'),
-                   (52, 'CMS196Light', '', 'rw'),
-                   (53, 'CMS196Heater', '', 'rw'),
-                   (54, 'CMS196Solenoid', '', 'rw'),
-                   (55, 'CMS196SampleDewarFillSignal', '', 'r'), # 1=filling
-                   (56, 'CMS196Status', '', 'r'),
-                   (57, 'CMS196Errors', '', 'r'),
-                   (58, 'HoldTimeRW', 's', 'rw'),
-                   (59, 'HoldTimeLeftR', 's', 'r'),
-                   (60, 'CMS196MainDewarFillSignal', '', 'r'), # 1=filling
-                   (61, 'CMS196CondensorLedLevel', '%', 'rw'), # Only 0 and 100 valid: 0=off, 100=on
-                   (62, 'CMS196TestMotion', '', 'rw'), 
-                   (63, 'XYMotorFeedbackMode', '', 'rw')]
-
-
-    nameToIndex = {name:index for (index, name, _, _) in _valueTypes}
-    nameToUnit = {name:unit for (_, name, unit, _) in _valueTypes}
-    nameToAccess = {name:access for (_, name, _, access) in _valueTypes}
+    # Enumerated value types for SetValue and GetValue.
+    eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
 
     def __init__(self):
         self.stage = LinkamCommsDll.Comms()
