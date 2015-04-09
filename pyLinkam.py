@@ -184,39 +184,6 @@ class LinkamStage(object):
         return self.status
 
 
-    def getValueByName(self, name):
-        index = self.nameToIndex.get(name)
-        if index is None:
-            return None
-        return self.object.GetValue(index)
-
-
-    def dumpValues(self):
-      print '%s  %s  %s  %s  %s  %s' % (
-        'id'.ljust(3),
-        'name'.ljust(32),
-        'min'.ljust(10),
-        'max'.ljust(10),
-        'res'.ljust(10),
-        'current'.ljust(10),)
-      for (id, name, _, _) in self._valueTypes:
-        minVal = self.object.GetMinValue(id)
-        maxVal = self.object.GetMaxValue(id)
-        try:
-            res = self.object.GetResolution(id)
-        except:
-            res = 'error'
-        currVal = self.object.GetValue(id)
-        outstr = '%s  %s  %s  %s  %s  %s' % (
-                   str(id).ljust(3),
-                   name.ljust(32),
-                   str(minVal).ljust(10)[0:10],
-                   str(maxVal).ljust(10)[0:10],
-                   str(res).ljust(10)[0:10],
-                   str(currVal).ljust(10)[0:10],)
-        print outstr
-
-
 def main():
     import time
     stage = LinkamStage()
