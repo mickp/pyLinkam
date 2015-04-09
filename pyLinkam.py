@@ -155,17 +155,17 @@ class LinkamStage(object):
     nameToAccess = {name:access for (_, name, _, access) in _valueTypes}
 
     def __init__(self):
-        self.object = LinkamCommsDll.Comms()
+        self.stage = LinkamCommsDll.Comms()
         self.stageConfig = _StageConfig()
         self.status = _StageStatus()
         
 
     def connect(self):
-        result = self.object.OpenComms(True, 0, 0)
+        result = self.stage.OpenComms(True, 0, 0)
         connected = result & 0x0001
         if connected:
-            self.stageConfig.update(self.object.GetStageConfig())
-            self.status.update(self.object.GetStatus())
+            self.stageConfig.update(self.stage.GetStageConfig())
+            self.status.update(self.stage.GetStatus())
         return dict(connected = connected,
                     commsNotResponding = result & 0b0010,
                     commsFailedToSendConfigData = result & 0b0100,
@@ -173,13 +173,13 @@ class LinkamStage(object):
 
 
     def getConfig(self):
-        configWord = self.object.GetStageConfig()
+        configWord = self.stage.GetStageConfig()
         self.stageConfig.update(configWord)
         return self.stageConfig
 
 
     def getStatus(self):
-        statusWord = self.object.GetStatus()
+        statusWord = self.stage.GetStatus()
         self.status.update(statusWord)
         return self.status
 
