@@ -128,6 +128,20 @@ class LinkamStage(object):
         return self.status
 
 
+    def homeMotors(self):
+        # From CMS196.exe CMS196.frmMotorControl.btnIndex_Click
+        self.moveToXY(-12000., -4000.)
+
+
+    def moveToXY(self, x, y):
+        xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
+        yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
+        self.stage.SetValue(xValueID, x)
+        self.stage.StartMotors(True, 0)
+        self.stage.SetValue(yValueID, y)
+        self.stage.StartMotors(True, 1)
+
+
 def main():
     import time
     stage = LinkamStage()
