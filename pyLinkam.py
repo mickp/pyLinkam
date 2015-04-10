@@ -19,6 +19,10 @@ limitations under the License.
 python wrapper for Linkam's T95 interfacing DLL.
 
 Requires .NET Framework 4.5.1 Full.
+
+Note that return values are cast as native python types to 
+enable remote calls over Pyro from python instances without
+support for .NET.
 """
 
 import clr
@@ -55,7 +59,7 @@ class _IntParser(object):
 
     def update(self, uInt):
         """Update attributes with new values."""
-        self._value = uInt
+        self._value = long(uInt)
         for key, bit in self._bitFields.iteritems():
             setattr(self, key, self._value & 2**bit > 0)
 
@@ -130,10 +134,10 @@ class LinkamStage(object):
         if connected:
             self.stageConfig.update(self.stage.GetStageConfig())
             self.status.update(self.stage.GetStatus())
-        return dict(connected = connected,
-                    commsNotResponding = result & 0b0010,
-                    commsFailedToSendConfigData = result & 0b0100,
-                    commsSerialPortError = result & 0b1000)
+        return dict(connected = bool(connected),
+                    commsNotResponding = long(result) & 0b0010,
+                    commsFailedToSendConfigData = long(result) & 0b0100,
+                    commsSerialPortError = long(result) & 0b1000)
 
 
     def getConfig(self):
@@ -146,7 +150,7 @@ class LinkamStage(object):
         """Fetch and return the stage's current position as (x, y)."""
         ValueIDs = (self.eVALUETYPE.u32XMotorPosnR.value__,
                     self.eVALUETYPE.u32YMotorPosnR.value__)
-        return tuple(self.stage.GetValue(id) for id in ValueIDs)
+        return tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
 
 
     def getStatus(self):
