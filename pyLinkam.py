@@ -152,14 +152,19 @@ class LinkamStage(object):
         self.moveToXY(-12000., -4000.)
 
 
-    def moveToXY(self, x, y):
-        """Move stage motors to position (x, y)"""
+    def moveToXY(self, x=None, y=None):
+        """Move stage motors to position (x, y)
+
+        If either x or y is None, the position on that axis is unchanged.
+        """
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
-        self.stage.SetValue(xValueID, x)
-        self.stage.StartMotors(True, 0)
-        self.stage.SetValue(yValueID, y)
-        self.stage.StartMotors(True, 1)
+        if x:
+            self.stage.SetValue(xValueID, x)
+            self.stage.StartMotors(True, 0)
+        if y:
+            self.stage.SetValue(yValueID, y)
+            self.stage.StartMotors(True, 1)
 
 
     def isMoving(self):
