@@ -132,6 +132,13 @@ class LinkamStage(object):
         return self.stageConfig
 
 
+    def getPosition(self):
+        """Fetch and return the stage's current position as (x, y)."""
+        ValueIDs = (self.eVALUETYPE.u32XMotorPosnR.value__,
+                    self.eVALUETYPE.u32YMotorPosnR.value__)
+        return tuple(self.stage.GetValue(id) for id in ValueIDs)
+
+
     def getStatus(self):
         statusWord = self.stage.GetStatus()
         self.status.update(statusWord)
