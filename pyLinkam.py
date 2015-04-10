@@ -34,19 +34,24 @@ import LinkamCommsDll
 
 
 class _IntParser(object):
+    """A class that parses bits in a (u)Int to attributes of itself."""
+    # Mapping of bit numbers to attribute names. Override.
     _bitFields = {}
     def __init__(self):
+        # Initialise empty attributes.
         for key, bit in self._bitFields.iteritems():
             setattr(self, key, None)
 
 
     def update(self, uInt):
+        """Update attributes with new values."""
         self._value = uInt
         for key, bit in self._bitFields.iteritems():
             setattr(self, key, self._value & 2**bit > 0)
 
 
 class _StageConfig(_IntParser):
+    # stageTypes and bitFields from SDK docs, appear to be correct.
     _stageTypes = {2**0: 'standard',
                    2**1: 'high temp',
                    2**2: 'peltier',
@@ -68,6 +73,7 @@ class _StageConfig(_IntParser):
         
 
 class _StageStatus(_IntParser):
+    # These bitFields are as per the documentation, but they are incorrect.
     _bitFields = {'errorState': 0,
                   'heater1RampAtSetPoint': 1,
                   'heater1Started': 2,
@@ -96,6 +102,7 @@ class _StageStatus(_IntParser):
 
 
 class LinkamStage(object):
+    """An interface to Linkam's .net assembly for their stages."""
     # Enumerated value types for SetValue and GetValue.
     eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
     XMOTOR_BIT = 2**45
@@ -132,12 +139,14 @@ class LinkamStage(object):
 
 
     def homeMotors(self):
-        # From CMS196.exe CMS196.frmMotorControl.btnIndex_Click
+        """Home the motors.
+        From CMS196.exe CMS196.frmMotorControl.btnIndex_Click.
+        """
         self.moveToXY(-12000., -4000.)
 
 
     def moveToXY(self, x, y):
-        # Move stage motors to position (x, y)
+        """Move stage motors to position (x, y)"""
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
         self.stage.SetValue(xValueID, x)
@@ -147,8 +156,10 @@ class LinkamStage(object):
 
 
     def isMoving(self):
-        # Factored out from moveToXY, as blocking until move is 
-        # completed will cause timeout errors when called remotely.
+        """Factored out from moveToXY.
+        Blocking until move is completed will cause timeout errors when
+        called remotely.
+        """
         stoppedCount = 0
         maxCount = 3
         while stoppedCount < maxCount:
