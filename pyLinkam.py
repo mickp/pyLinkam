@@ -25,7 +25,17 @@ import clr
 import sys
 import ctypes
 import time
+import Pyro4
+import threading
+import distutils.version
 
+if (distutils.version.LooseVersion(Pyro4.__version__) >=
+    distutils.version.LooseVersion('4.22')):
+    Pyro4.config.SERIALIZERS_ACCEPTED.discard('serpent')
+    Pyro4.config.SERIALIZERS_ACCEPTED.add('pickle')
+Pyro4.config.SERIALIZER = 'pickle'
+
+CONFIG_NAME = 'linkam'
 DLL_PATH = r"C:\b24\pyLinkam\linkam"
 
 sys.path.append(DLL_PATH)
@@ -184,18 +194,56 @@ class LinkamStage(object):
         return False
 
 
-def main():
-    import time
-    stage = LinkamStage()
-    stage.connect()
+class Server(object):
+    def __init__(self):
+        self.object = None
+        self.daemon_thread = None
+        self.config = None
+        self.run_flag = True
 
-    while True:
-        stage.getStatus()
-        sys.stdout.write("\033[2J")
-        sys.stdout.write("\x1b[1;1H")
-        for (key, value) in stage.status.__dict__.iteritems():
-            sys.stdout.write(u'%s  %f\n' % (key.ljust(25), value))
-        time.sleep(1)
+    def __del__(self):
+        self.run_flag = False
+        if self.daemon_thread:
+            self.daemon_thread.join()
+
+
+    def run(self):
+        import readconfig
+        config = readconfig.config
+
+        host = config.get(CONFIG_NAME, 'ipAddress')
+        port = config.getint(CONFIG_NAME, 'port')
+
+        self.object = LinkamStage()
+
+        daemon = Pyro4.Daemon(port=port, host=host)
+
+        # Start the daemon in a new thread.
+        self.daemon_thread = threading.Thread(
+            target=Pyro4.Daemon.serveSimple,
+            args = ({self.object: CONFIG_NAME},),
+            kwargs = {'daemon': daemon, 'ns': False}
+            )
+        self.daemon_thread.start()
+
+        # Wait until run_flag is set to False.
+        while self.run_flag:
+            time.sleep(1)
+
+        # Do any cleanup.
+        daemon.shutdown()
+
+        self.daemon_thread.join()
+
+
+    def stop(self):
+        self.run_flag = False
+
+
+def main():
+    s = Server()
+    s.run()
+
 
 if __name__ == '__main__':
     main()
