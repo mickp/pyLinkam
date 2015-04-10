@@ -24,6 +24,7 @@ Requires .NET Framework 4.5.1 Full.
 import clr
 import sys
 import ctypes
+import time
 
 DLL_PATH = r"C:\b24\pyLinkam\linkam"
 
@@ -31,7 +32,6 @@ sys.path.append(DLL_PATH)
 clr.AddReference(r"LinkamCommsLibrary.dll")
 import LinkamCommsDll
 
-DEBUG=TRUE
 
 class _IntParser(object):
     _bitFields = {}
@@ -137,26 +137,28 @@ class LinkamStage(object):
 
 
     def moveToXY(self, x, y):
-        import time
+        # Move stage motors to position (x, y)
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
         self.stage.SetValue(xValueID, x)
         self.stage.StartMotors(True, 0)
         self.stage.SetValue(yValueID, y)
         self.stage.StartMotors(True, 1)
+
+
+    def isMoving(self):
+        # Factored out from moveToXY, as blocking until move is 
+        # completed will cause timeout errors when called remotely.
         stoppedCount = 0
         maxCount = 3
-        if DEBUG:
-            print '3210' + 6 * '9876543210'
         while stoppedCount < maxCount:
             status = self.stage.GetStatus()
-            if DEBUG:
-                print bin(status).replace('0',' ').replace('b','').rjust(64)
             if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
                 stoppedCount += 1
             else:
-                stoppedCount = 0
-            time.sleep(0.5)
+                return True
+            time.sleep(0.001)
+        return False
 
 
 def main():
