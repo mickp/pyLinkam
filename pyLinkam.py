@@ -196,6 +196,8 @@ class LinkamStage(object):
         """Move stage motors to position (x, y)
 
         If either x or y is None, the position on that axis is unchanged.
+        Return as soon as motion is started to avoid timeouts when called
+        remotely. Use isMoving() to check movement status.
         """
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
