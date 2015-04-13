@@ -132,6 +132,18 @@ class LinkamStage(object):
         self.status = _StageStatus()
         # A flag to show if the stage has been connected.
         self.connected = False
+        # A flag to show that the motors have been homed.
+        self.motorsHomed = False
+		# A handler to detect stage disconnection events.
+        self.stage.ControllerDisconnected += self.disconnectEventHandler
+
+
+    def disconnectEventHandler(self, sender, eventArgs):
+        """Handles stage disconnection events."""
+        # Indicate that the stage is no longer connected.
+        self.connected = False
+        # Indicated that the motors are not homed.
+        self.motorsHomed = False
 
 
     def connect(self, reconnect=False):
@@ -174,6 +186,10 @@ class LinkamStage(object):
         From CMS196.exe CMS196.frmMotorControl.btnIndex_Click.
         """
         self.moveToXY(-12000., -4000.)
+        # Set this here, but would be better to wait until the
+        # homing operation has finished by, say, watching the
+        # stage position until it reaches (0, 0).
+        self.motorsHomed = True
 
 
     def moveToXY(self, x=None, y=None):
