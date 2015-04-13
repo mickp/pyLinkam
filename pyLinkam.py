@@ -122,19 +122,29 @@ class LinkamStage(object):
     XMOTOR_BIT = 2**45
     YMOTOR_BIT = 2**48
 
-    def __init__(self):
-        self.stage = LinkamCommsDll.Comms()
-        self.stageConfig = _StageConfig()
-        self.status = _StageStatus()
-        
 
-    def connect(self):
+    def __init__(self):
+        # Comms link to the hardware.
+        self.stage = LinkamCommsDll.Comms()
+        # Reported stage configuration.
+        self.stageConfig = _StageConfig()
+        # Stage status.
+        self.status = _StageStatus()
+        # A flag to show if the stage has been connected.
+        self.connected = False
+
+
+    def connect(self, reconnect=False):
+        if self.connected and not reconnect:
+            return None
         result = self.stage.OpenComms(True, 0, 0)
-        connected = result & 0x0001
-        if connected:
+        self.connected = result & 0x0001
+        if self.connected:
             self.stageConfig.update(self.stage.GetStageConfig())
             self.status.update(self.stage.GetStatus())
-        return dict(connected = bool(connected),
+            return True
+        else:
+            return dict(connected = bool(connected),
                     commsNotResponding = long(result) & 0b0010,
                     commsFailedToSendConfigData = long(result) & 0b0100,
                     commsSerialPortError = long(result) & 0b1000)
