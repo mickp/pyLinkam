@@ -136,6 +136,14 @@ class LinkamStage(object):
         self.motorsHomed = False
 		# A handler to detect stage disconnection events.
         self.stage.ControllerDisconnected += self.disconnectEventHandler
+        # A thread to update status.
+        self.statusThread = threading.Thread(target=self.updateStatus)
+        self.statusThread.Daemon = True
+        self.statusThread.start()
+        # A lock to block the statusThread.
+        self.statusLock = threading.Lock()
+        # Flag to indicate movement status
+        self.moving = None
 
 
     def disconnectEventHandler(self, sender, eventArgs):
@@ -199,31 +207,67 @@ class LinkamStage(object):
         Return as soon as motion is started to avoid timeouts when called
         remotely. Use isMoving() to check movement status.
         """
-        xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
-        yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
-        if x:
-            self.stage.SetValue(xValueID, x)
-            self.stage.StartMotors(True, 0)
-        if y:
-            self.stage.SetValue(yValueID, y)
-            self.stage.StartMotors(True, 1)
+        # Grab the statusLock and hold on to it to stop updateStatus 
+        # clearing the move flag before we have started moving the 
+        # stage.
+        with self.statusLock:
+            self.moving = True
+            xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
+            yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
+            if x:
+                self.stage.SetValue(xValueID, x)
+                self.stage.StartMotors(True, 0)
+            if y:
+                self.stage.SetValue(yValueID, y)
+                self.stage.StartMotors(True, 1)
 
 
     def isMoving(self):
-        """Factored out from moveToXY.
-        Blocking until move is completed will cause timeout errors when
-        called remotely.
+        """Return whether or not the stage is moving.
+    
+        This now uses an instance variable instead of testing
+        the hardware directly - that required multiple GetStatus
+        calls, which lead to either caused the .NET assembly to
+        fall over (probably due to too high a call rate) or Pyro
+        timeouts (too long between calls).
         """
-        stoppedCount = 0
-        maxCount = 3
-        while stoppedCount < maxCount:
-            status = self.stage.GetStatus()
-            if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
-                stoppedCount += 1
-            else:
-                return True
-            time.sleep(0.001)
-        return False
+        with self.statusLock:
+            return self.moving
+    
+
+    def updateStatus(self):
+        """Runs in a separate thread to update status variables.
+
+        Currently, just clears the self.moving flag once stage movement
+        has stopped.
+        """
+        # How many times to we check that the stage is really stopped?
+        maxStoppedCount = 5
+        # Minimum delay between GetStatus calls.
+        sleepBetweenReads = 0.1
+        # Delay at end of main loop iterations.
+        sleepBetweenIterations = 0.2
+
+        while True:
+            if not self.connected:
+                continue
+            stoppedCount = 0
+            while stoppedCount < maxStoppedCount:
+                try:
+                    status = self.stage.GetStatus()
+                except:
+                    # There is an issue communicating with the stage.
+                    # It is not the status thread's job to fix it, so
+                    # just break back to the outer loop.
+                    break
+                if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
+                    stoppedCount += 1
+                time.sleep(sleepBetweenReads)
+            # Grab the status lock. This prevents this thread from clearing
+            # self.moving too soon.
+            with self.statusLock:
+                self.moving = False
+            time.sleep(sleepBetweenIterations)
 
 
 class Server(object):
