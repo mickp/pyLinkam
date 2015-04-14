@@ -144,6 +144,8 @@ class LinkamStage(object):
         self.statusLock = threading.Lock()
         # Flag to indicate movement status
         self.moving = None
+        # Stage position target.
+        self.targetPos = [None, None]
         # Current stage position
         self.position = (None, None)
 
@@ -208,6 +210,24 @@ class LinkamStage(object):
         self.motorsHomed = True
 
 
+    def _moveToXY(self, x=None, y=None):
+        """Move the stage motors - private version.
+
+        Moves the motors without requiring statuslock or updating
+        this instance's targetPos.
+        """
+        self.moving = True
+        xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
+        yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
+        if x:
+            self.stage.SetValue(xValueID, x)
+            self.stage.StartMotors(True, 0)
+        if y:
+            self.stage.SetValue(yValueID, y)
+            self.stage.StartMotors(True, 1)
+
+
+
     def moveToXY(self, x=None, y=None):
         """Move stage motors to position (x, y)
 
@@ -219,15 +239,11 @@ class LinkamStage(object):
         # clearing the move flag before we have started moving the 
         # stage.
         with self.statusLock:
-            self.moving = True
-            xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
-            yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
             if x:
-                self.stage.SetValue(xValueID, x)
-                self.stage.StartMotors(True, 0)
+                self.targetPos[0] = x
             if y:
-                self.stage.SetValue(yValueID, y)
-                self.stage.StartMotors(True, 1)
+                self.targetPos[1] = y
+            self._moveToXY(*self.targetPos)
 
 
     def isMoving(self):
