@@ -29,6 +29,7 @@ import clr
 import sys
 import ctypes
 import time
+from operator import sub
 import Pyro4
 import threading
 import distutils.version
@@ -258,40 +259,80 @@ class LinkamStage(object):
         with self.statusLock:
             return self.moving
     
+    def stopMotors(self):
+        for m in [0, 1]:
+            self.stage.StartMotors(False, 0)
+
 
     def updateStatus(self):
         """Runs in a separate thread to update status variables.
 
         Currently, just clears the self.moving flag once stage movement
         has stopped.
+        
+        As at 2015-04-14, the stage stop bits can frequently report
+        that the stage has stopped before motion has been completed.
+        Instead, we rely on consecutive reads of stage position.
+
+        Then there's the problem of hunting. Often, the stage becomes
+        stuck in a local minimum, and needs perturbing before it will
+        approach closer to the target position. We determine if this
+        is the case by use of a weighted variance as per Finch (2009).
         """
-        # How many times to we check that the stage is really stopped?
-        maxStoppedCount = 5
-        # Minimum delay between GetStatus calls.
-        sleepBetweenReads = 0.1
         # Delay at end of main loop iterations.
-        sleepBetweenIterations = 0.2
+        sleepBetweenIterations = 0.1
+        # Acceptable position error in microns.
+        errorThreshold = 2
+        # Counts required to exit stop-detection loop.
+        maxCount = 3
+        # Consecutive reads on target
+        onTargetCount = 0
+        # Sliding position average
+        slidingMean = None
+        # Sliding variance
+        slidingVar = None
+        # Sliding statistics weighting factor
+        alpha = 0.33
+        # Hunting deviation treshold
+        huntingThreshold = 3.5**2
 
         while True:
             if not self.connected:
                 continue
-            stoppedCount = 0
-            while stoppedCount < maxStoppedCount:
-                try:
-                    status = self.stage.GetStatus()
-                except:
-                    # There is an issue communicating with the stage.
-                    # It is not the status thread's job to fix it, so
-                    # just break back to the outer loop.
-                    break
-                if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
-                    stoppedCount += 1
-                time.sleep(sleepBetweenReads)
-            # Grab the status lock. This prevents this thread from clearing
-            # self.moving too soon.
-            with self.statusLock:
-                self.moving = False
+            try:
+                pos = self._updatePosition()
+            except:
+                # There is an issue communicating with the stage.
+                # It is not the status thread's job to fix it, so
+                # just skip to the next iteration.
+                continue
             time.sleep(sleepBetweenIterations)
+            if self.moving:
+                # Update the sliding statistics.
+                if slidingMean is None:
+                    slidingMean = [p for p in pos]
+                    slidingVar = [m for m in slidingMean]
+                else:
+                    diff = [p - m for (p, m) in zip(pos, slidingMean)]
+                    incr = [alpha * d for d in diff]
+                    slidingMean = [m + i for (m, i) in zip(slidingMean, incr)]
+                    slidingVar = [(1. - alpha) * (v + d * i)
+                                  for(v, d, i) in zip(slidingVar, diff, incr)]
+            with self.statusLock:
+                if self.moving and not None in self.targetPos:
+                    positionError = map(sub, self.position, self.targetPos)
+                    if all(abs(p) < errorThreshold for p in positionError):
+                        onTargetCount += 1
+                    else:
+                        onTargetCount = 0
+                    if onTargetCount >= maxCount:
+                        self.stopMotors()
+                        self.moving = False
+                    if all([v < huntingThreshold for v in slidingVar]):
+                        # The motor is stuck.
+                        self._moveToXY(*[p + 100 for p in self.targetPos])
+                        time.sleep(0.1)
+                        self._moveToXY(*self.targetPos)
 
 
 class Server(object):
