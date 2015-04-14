@@ -144,6 +144,8 @@ class LinkamStage(object):
         self.statusLock = threading.Lock()
         # Flag to indicate movement status
         self.moving = None
+        # Current stage position
+        self.position = (None, None)
 
 
     def disconnectEventHandler(self, sender, eventArgs):
@@ -176,11 +178,17 @@ class LinkamStage(object):
         return self.stageConfig
 
 
-    def getPosition(self):
+    def _updatePosition(self):
         """Fetch and return the stage's current position as (x, y)."""
         ValueIDs = (self.eVALUETYPE.u32XMotorPosnR.value__,
                     self.eVALUETYPE.u32YMotorPosnR.value__)
-        return tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
+        self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
+        return self.position
+
+
+    def getPosition(self):
+        """Return the stage's current position as (x, y)."""
+        return self.position
 
 
     def getStatus(self):
