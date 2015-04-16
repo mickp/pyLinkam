@@ -169,7 +169,7 @@ class LinkamStage(object):
             self.status.update(self.stage.GetStatus())
             return True
         else:
-            return dict(connected = bool(connected),
+            return dict(connected = bool(self.connected),
                     commsNotResponding = long(result) & 0b0010,
                     commsFailedToSendConfigData = long(result) & 0b0100,
                     commsSerialPortError = long(result) & 0b1000)
