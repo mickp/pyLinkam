@@ -265,7 +265,7 @@ class LinkamStage(object):
     
     def stopMotors(self):
         for m in [0, 1]:
-            self.stage.StartMotors(False, 0)
+            self.stage.StartMotors(False, m)
 
 
     def updateStatus(self):
