@@ -191,7 +191,11 @@ class LinkamStage(object):
 
     def getPosition(self):
         """Return the stage's current position as (x, y)."""
-        return self.position
+        if None in self.position:
+            # Client may not handle None
+            return (-1, -1)
+        else:
+            return self.position
 
 
     def getStatus(self):
