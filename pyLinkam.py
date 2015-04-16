@@ -149,6 +149,8 @@ class LinkamStage(object):
         self.targetPos = [None, None]
         # Current stage position
         self.position = (None, None)
+        # Flag to indicate stop motors after move
+        self.stopMotorsBetweenMoves = True
 
 
     def disconnectEventHandler(self, sender, eventArgs):
@@ -330,7 +332,8 @@ class LinkamStage(object):
                     else:
                         onTargetCount = 0
                     if onTargetCount >= maxCount:
-                        self.stopMotors()
+                        if self.stopMotorsBetweenMoves:
+                            self.stopMotors()
                         self.moving = False
                     if all([v < huntingThreshold for v in slidingVar]):
                         # The motor is stuck.
