@@ -151,6 +151,8 @@ class LinkamStage(object):
         self.position = (None, None)
         # Flag to indicate stop motors after move
         self.stopMotorsBetweenMoves = True
+        # Client to send status updates to
+        self.client = None
 
 
     def disconnectEventHandler(self, sender, eventArgs):
@@ -265,6 +267,11 @@ class LinkamStage(object):
         with self.statusLock:
             return self.moving
     
+
+    def setClient(self, uri):
+        self.client = self.client = Pyro4.Proxy(uri)
+
+
     def stopMotors(self):
         for m in [0, 1]:
             self.stage.StartMotors(False, m)
@@ -301,6 +308,17 @@ class LinkamStage(object):
         alpha = 0.33
         # Hunting deviation treshold
         huntingThreshold = 3.5**2
+        # Map status values to eVALUETYPEs
+        statusMap = {'bridgeT':self.eVALUETYPE.u32Heater1TempR,
+                     'chamberT':self.eVALUETYPE.u32Heater2TempR,
+                     'dewarT':self.eVALUETYPE.u32Heater3TempR,
+                     'light':self.eVALUETYPE.u32CMS196Light,
+                     'mainFill':self.eVALUETYPE.u32CMS196MainDewarFillSignal,
+                     'sampleFill':self.eVALUETYPE.u32CMS196SampleDewarFillSignal,
+                     'condensor':self.eVALUETYPE.u32CMS196CondensorLedLevel,
+                     'caseHeater':self.eVALUETYPE.u32CMS196Heater,}
+        # Last time status was sent
+        tLastStatus = 0
 
         while True:
             if not self.connected:
@@ -340,6 +358,20 @@ class LinkamStage(object):
                         self._moveToXY(*[p + 100 for p in self.targetPos])
                         time.sleep(0.1)
                         self._moveToXY(*self.targetPos)
+
+            if self.client:
+                sdict = {key: float(self.stage.GetValue(enum.value__))
+                          for key, enum in statusMap.iteritems()}
+
+                print sdict
+
+                try:
+                    self.client.receiveData(sdict)
+                except (Pyro4.socketutil.ConnectionClosedError,
+                       Pyro4.socketutil.CommunicationError):
+                    pass
+                except:
+                    raise
 
 
 class Server(object):
