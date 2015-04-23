@@ -319,6 +319,8 @@ class LinkamStage(object):
                      'caseHeater':self.eVALUETYPE.u32CMS196Heater,}
         # Last time status was sent
         tLastStatus = 0
+        # Status update period
+        tStatusUpdate = 1
 
         while True:
             if not self.connected:
@@ -359,14 +361,15 @@ class LinkamStage(object):
                         time.sleep(0.1)
                         self._moveToXY(*self.targetPos)
 
-            if self.client:
-                sdict = {key: float(self.stage.GetValue(enum.value__))
+            tNow = time.time()
+            if self.client and (tNow - tLastStatus > tStatusUpdate):
+                tLastStatus = tNow
+                # Must cast results to float for non-.NET clients.
+                status = {key: float(self.stage.GetValue(enum.value__))
                           for key, enum in statusMap.iteritems()}
-
-                print sdict
-
+                status['time'] = tNow
                 try:
-                    self.client.receiveData(sdict)
+                    self.client.receiveData(status)
                 except (Pyro4.socketutil.ConnectionClosedError,
                        Pyro4.socketutil.CommunicationError):
                     pass
