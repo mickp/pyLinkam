@@ -277,6 +277,19 @@ class LinkamStage(object):
             self.stage.StartMotors(False, m)
 
 
+    def toggleChamberLight(self):
+        """Toggle the chamber light.
+
+        GetValue(u32CMS196Light) always returns 4, regardless
+        of the state of the light.
+        Writing any value to u32CMS196Light toggles its state.
+        So, we can toggle the state, but not be certain which
+        state it is in.
+        """
+        enum = self.eVALUETYPE.u32CMS196Light.value__
+        self.stage.SetValue(enum, 0)
+
+
     def updateStatus(self):
         """Runs in a separate thread to update status variables.
 
