@@ -29,6 +29,7 @@ import clr
 import sys
 import ctypes
 import time
+from operator import sub
 import Pyro4
 import threading
 import distutils.version
@@ -136,6 +137,22 @@ class LinkamStage(object):
         self.motorsHomed = False
 		# A handler to detect stage disconnection events.
         self.stage.ControllerDisconnected += self.disconnectEventHandler
+        # A thread to update status.
+        self.statusThread = threading.Thread(target=self.updateStatus)
+        self.statusThread.Daemon = True
+        self.statusThread.start()
+        # A lock to block the statusThread.
+        self.statusLock = threading.Lock()
+        # Flag to indicate movement status
+        self.moving = None
+        # Stage position target.
+        self.targetPos = [None, None]
+        # Current stage position
+        self.position = (None, None)
+        # Flag to indicate stop motors after move
+        self.stopMotorsBetweenMoves = True
+        # Client to send status updates to
+        self.client = None
 
 
     def disconnectEventHandler(self, sender, eventArgs):
@@ -156,7 +173,7 @@ class LinkamStage(object):
             self.status.update(self.stage.GetStatus())
             return True
         else:
-            return dict(connected = bool(connected),
+            return dict(connected = bool(self.connected),
                     commsNotResponding = long(result) & 0b0010,
                     commsFailedToSendConfigData = long(result) & 0b0100,
                     commsSerialPortError = long(result) & 0b1000)
@@ -168,11 +185,21 @@ class LinkamStage(object):
         return self.stageConfig
 
 
-    def getPosition(self):
+    def _updatePosition(self):
         """Fetch and return the stage's current position as (x, y)."""
         ValueIDs = (self.eVALUETYPE.u32XMotorPosnR.value__,
                     self.eVALUETYPE.u32YMotorPosnR.value__)
-        return tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
+        self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
+        return self.position
+
+
+    def getPosition(self):
+        """Return the stage's current position as (x, y)."""
+        if None in self.position:
+            # Client may not handle None
+            return (-1, -1)
+        else:
+            return self.position
 
 
     def getStatus(self):
@@ -192,13 +219,13 @@ class LinkamStage(object):
         self.motorsHomed = True
 
 
-    def moveToXY(self, x=None, y=None):
-        """Move stage motors to position (x, y)
+    def _moveToXY(self, x=None, y=None):
+        """Move the stage motors - private version.
 
-        If either x or y is None, the position on that axis is unchanged.
-        Return as soon as motion is started to avoid timeouts when called
-        remotely. Use isMoving() to check movement status.
+        Moves the motors without requiring statuslock or updating
+        this instance's targetPos.
         """
+        self.moving = True
         xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
         yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
         if x:
@@ -209,21 +236,158 @@ class LinkamStage(object):
             self.stage.StartMotors(True, 1)
 
 
-    def isMoving(self):
-        """Factored out from moveToXY.
-        Blocking until move is completed will cause timeout errors when
-        called remotely.
+
+    def moveToXY(self, x=None, y=None):
+        """Move stage motors to position (x, y)
+
+        If either x or y is None, the position on that axis is unchanged.
+        Return as soon as motion is started to avoid timeouts when called
+        remotely. Use isMoving() to check movement status.
         """
-        stoppedCount = 0
+        # Grab the statusLock and hold on to it to stop updateStatus 
+        # clearing the move flag before we have started moving the 
+        # stage.
+        with self.statusLock:
+            if x:
+                self.targetPos[0] = x
+            if y:
+                self.targetPos[1] = y
+            self._moveToXY(*self.targetPos)
+
+
+    def isMoving(self):
+        """Return whether or not the stage is moving.
+    
+        This now uses an instance variable instead of testing
+        the hardware directly - that required multiple GetStatus
+        calls, which lead to either caused the .NET assembly to
+        fall over (probably due to too high a call rate) or Pyro
+        timeouts (too long between calls).
+        """
+        with self.statusLock:
+            return self.moving
+    
+
+    def setClient(self, uri):
+        self.client = self.client = Pyro4.Proxy(uri)
+
+
+    def stopMotors(self):
+        for m in [0, 1]:
+            self.stage.StartMotors(False, m)
+
+
+    def toggleChamberLight(self):
+        """Toggle the chamber light.
+
+        GetValue(u32CMS196Light) always returns 4, regardless
+        of the state of the light.
+        Writing any value to u32CMS196Light toggles its state.
+        So, we can toggle the state, but not be certain which
+        state it is in.
+        """
+        enum = self.eVALUETYPE.u32CMS196Light.value__
+        self.stage.SetValue(enum, 0)
+
+
+    def updateStatus(self):
+        """Runs in a separate thread to update status variables.
+
+        Currently, just clears the self.moving flag once stage movement
+        has stopped.
+        
+        As at 2015-04-14, the stage stop bits can frequently report
+        that the stage has stopped before motion has been completed.
+        Instead, we rely on consecutive reads of stage position.
+
+        Then there's the problem of hunting. Often, the stage becomes
+        stuck in a local minimum, and needs perturbing before it will
+        approach closer to the target position. We determine if this
+        is the case by use of a weighted variance as per Finch (2009).
+        """
+        # Delay at end of main loop iterations.
+        sleepBetweenIterations = 0.1
+        # Acceptable position error in microns.
+        errorThreshold = 2
+        # Counts required to exit stop-detection loop.
         maxCount = 3
-        while stoppedCount < maxCount:
-            status = self.stage.GetStatus()
-            if status & self.XMOTOR_BIT and status & self.YMOTOR_BIT:
-                stoppedCount += 1
-            else:
-                return True
-            time.sleep(0.001)
-        return False
+        # Consecutive reads on target
+        onTargetCount = 0
+        # Sliding position average
+        slidingMean = None
+        # Sliding variance
+        slidingVar = None
+        # Sliding statistics weighting factor
+        alpha = 0.33
+        # Hunting deviation treshold
+        huntingThreshold = 3.5**2
+        # Map status values to eVALUETYPEs
+        statusMap = {'bridgeT':self.eVALUETYPE.u32Heater1TempR,
+                     'chamberT':self.eVALUETYPE.u32Heater2TempR,
+                     'dewarT':self.eVALUETYPE.u32Heater3TempR,
+                     'light':self.eVALUETYPE.u32CMS196Light,
+                     'mainFill':self.eVALUETYPE.u32CMS196MainDewarFillSignal,
+                     'sampleFill':self.eVALUETYPE.u32CMS196SampleDewarFillSignal,
+                     'condensor':self.eVALUETYPE.u32CMS196CondensorLedLevel,
+                     'caseHeater':self.eVALUETYPE.u32CMS196Heater,}
+        # Last time status was sent
+        tLastStatus = 0
+        # Status update period
+        tStatusUpdate = 1
+
+        while True:
+            if not self.connected:
+                continue
+            try:
+                pos = self._updatePosition()
+            except:
+                # There is an issue communicating with the stage.
+                # It is not the status thread's job to fix it, so
+                # just skip to the next iteration.
+                continue
+            time.sleep(sleepBetweenIterations)
+            if self.moving:
+                # Update the sliding statistics.
+                if slidingMean is None:
+                    slidingMean = [p for p in pos]
+                    slidingVar = [m for m in slidingMean]
+                else:
+                    diff = [p - m for (p, m) in zip(pos, slidingMean)]
+                    incr = [alpha * d for d in diff]
+                    slidingMean = [m + i for (m, i) in zip(slidingMean, incr)]
+                    slidingVar = [(1. - alpha) * (v + d * i)
+                                  for(v, d, i) in zip(slidingVar, diff, incr)]
+            with self.statusLock:
+                if self.moving and not None in self.targetPos:
+                    positionError = map(sub, self.position, self.targetPos)
+                    if all(abs(p) < errorThreshold for p in positionError):
+                        onTargetCount += 1
+                    else:
+                        onTargetCount = 0
+                    if onTargetCount >= maxCount:
+                        if self.stopMotorsBetweenMoves:
+                            self.stopMotors()
+                        self.moving = False
+                    if all([v < huntingThreshold for v in slidingVar]):
+                        # The motor is stuck.
+                        self._moveToXY(*[p + 100 for p in self.targetPos])
+                        time.sleep(0.1)
+                        self._moveToXY(*self.targetPos)
+
+            tNow = time.time()
+            if self.client and (tNow - tLastStatus > tStatusUpdate):
+                tLastStatus = tNow
+                # Must cast results to float for non-.NET clients.
+                status = {key: float(self.stage.GetValue(enum.value__))
+                          for key, enum in statusMap.iteritems()}
+                status['time'] = tNow
+                try:
+                    self.client.receiveData(status)
+                except (Pyro4.socketutil.ConnectionClosedError,
+                       Pyro4.socketutil.CommunicationError):
+                    pass
+                except:
+                    raise
 
 
 class Server(object):
