@@ -340,6 +340,11 @@ class LinkamStage(object):
 
         while True:
             if not self.connected:
+                # Try to connect to stage.
+                self.connect()
+                # Don't hog the CPU.
+                time.sleep(0)
+                # Skip to next iteration.
                 continue
             try:
                 pos = self._updatePosition()
