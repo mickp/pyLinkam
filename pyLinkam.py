@@ -177,19 +177,9 @@ class LinkamStage(object):
 
 
     def connect(self, reconnect=False):
-        if self.connected and not reconnect:
-            return None
-        result = self.stage.OpenComms(True, 0, 0)
-        self.connected = result & 0x0001
-        if self.connected:
-            self.stageConfig.update(self.stage.GetStageConfig())
-            self.status.update(self.stage.GetStatus())
-            return True
-        else:
-            return dict(connected = bool(self.connected),
-                    commsNotResponding = long(result) & 0b0010,
-                    commsFailedToSendConfigData = long(result) & 0b0100,
-                    commsSerialPortError = long(result) & 0b1000)
+        if reconnect or not self.connected:
+            result = self.stage.OpenComms(True, 0, 0)
+        return self.connected
 
 
     def getConfig(self):
