@@ -137,6 +137,8 @@ class LinkamStage(object):
         self.motorsHomed = False
 		# A handler to detect stage disconnection events.
         self.stage.ControllerDisconnected += self.disconnectEventHandler
+        # A handler to detect stage connection events.
+        self.stage.ControllerConnected += self.connectEventHandler
         # A thread to update status.
         self.statusThread = threading.Thread(target=self.updateStatus)
         self.statusThread.Daemon = True
@@ -153,6 +155,17 @@ class LinkamStage(object):
         self.stopMotorsBetweenMoves = True
         # Client to send status updates to
         self.client = None
+
+    
+    def connectEventHandler(self, sender, eventArgs):
+        """Handles stage connection events."""
+        self.connected = True
+        oldPosition = self.position
+        if self.position == (0.0, 0.0):
+            # Stage may have just been powered on.
+            self.motorsHomed = False
+        else:
+            self.motorsHomed = self.position == oldPosition
 
 
     def disconnectEventHandler(self, sender, eventArgs):
