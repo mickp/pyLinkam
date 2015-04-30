@@ -136,11 +136,11 @@ class LinkamStage(object):
         # A flag to show that the motors have been homed.
         self.motorsHomed = False
 		# A handler to detect stage disconnection events.
-        self.stage.ControllerDisconnected += self.disconnectEventHandler
+        self.stage.ControllerDisconnected += self._disconnectEventHandler
         # A handler to detect stage connection events.
-        self.stage.ControllerConnected += self.connectEventHandler
+        self.stage.ControllerConnected += self._connectEventHandler
         # A thread to update status.
-        self.statusThread = threading.Thread(target=self.updateStatus)
+        self.statusThread = threading.Thread(target=self._updateStatus)
         self.statusThread.Daemon = True
         self.statusThread.start()
         # A lock to block the statusThread.
@@ -157,7 +157,7 @@ class LinkamStage(object):
         self.client = None
 
     
-    def connectEventHandler(self, sender, eventArgs):
+    def _connectEventHandler(self, sender, eventArgs):
         """Handles stage connection events."""
         self.connected = True
         oldPosition = self.position
@@ -168,7 +168,7 @@ class LinkamStage(object):
             self.motorsHomed = self.position == oldPosition
 
 
-    def disconnectEventHandler(self, sender, eventArgs):
+    def _disconnectEventHandler(self, sender, eventArgs):
         """Handles stage disconnection events."""
         # Indicate that the stage is no longer connected.
         self.connected = False
@@ -176,13 +176,13 @@ class LinkamStage(object):
         self.motorsHomed = False
 
 
-    def connect(self, reconnect=False):
+    def _connect(self, reconnect=False):
         if reconnect or not self.connected:
             result = self.stage.OpenComms(True, 0, 0)
         return self.connected
 
 
-    def getConfig(self):
+    def _getConfig(self):
         configWord = self.stage.GetStageConfig()
         self.stageConfig.update(configWord)
         return self.stageConfig
@@ -293,7 +293,7 @@ class LinkamStage(object):
         self.stage.SetValue(enum, 0)
 
 
-    def updateStatus(self):
+    def _updateStatus(self):
         """Runs in a separate thread to update status variables.
 
         Currently, just clears the self.moving flag once stage movement
@@ -341,7 +341,7 @@ class LinkamStage(object):
         while True:
             if not self.connected:
                 # Try to connect to stage.
-                self.connect()
+                self._connect()
                 # Don't hog the CPU.
                 time.sleep(0)
                 # Skip to next iteration.
