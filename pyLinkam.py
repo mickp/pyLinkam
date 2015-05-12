@@ -151,7 +151,7 @@ class LinkamStage(object):
         self.connected = False
         # A flag to show that the motors have been homed.
         self.motorsHomed = False
-		# A handler to detect stage disconnection events.
+        # A handler to detect stage disconnection events.
         self.stage.ControllerDisconnected += self._disconnectEventHandler
         # A handler to detect stage connection events.
         self.stage.ControllerConnected += self._connectEventHandler
