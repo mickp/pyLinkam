@@ -285,7 +285,18 @@ class LinkamStage(object):
         """
         with self.statusLock:
             return self.moving
-    
+
+
+    def _sendStatus(self, status):
+        """Send status to any client."""
+        try:
+            self.client.receiveData(status)
+        except (Pyro4.errors.PyroError):
+            # Something happened to the client.
+            pass
+        except:
+            raise
+
 
     def setClient(self, uri):
         self.client = self.client = Pyro4.Proxy(uri)
