@@ -366,12 +366,16 @@ class LinkamStage(object):
         tStatusUpdate = 1
 
         while True:
+            tNow = time.time()
             if not self.connected:
                 # Try to connect to stage.
                 self._connect()
                 # Don't hog the CPU.
                 time.sleep(0)
                 # Skip to next iteration.
+                if self.client and (tNow - tLastStatus > tStatusUpdate):
+                    tLastStatus = tNow
+                    self._sendStatus({'connected':False})
                 continue
             try:
                 pos = self._updatePosition()
@@ -409,20 +413,14 @@ class LinkamStage(object):
                         time.sleep(0.1)
                         self._moveToXY(*self.targetPos)
 
-            tNow = time.time()
             if self.client and (tNow - tLastStatus > tStatusUpdate):
                 tLastStatus = tNow
                 # Must cast results to float for non-.NET clients.
                 status = {key: float(self.stage.GetValue(enum.value__))
                           for key, enum in statusMap.iteritems()}
                 status['time'] = tNow
-                try:
-                    self.client.receiveData(status)
-                except (Pyro4.socketutil.ConnectionClosedError,
-                       Pyro4.socketutil.CommunicationError):
-                    pass
-                except:
-                    raise
+                status['connected'] = True
+                self._sendStatus(status)
 
 
 class Server(object):
