@@ -26,13 +26,15 @@ support for .NET.
 """
 
 import clr
-import sys
 import ctypes
-import time
-from operator import sub
-import Pyro4
-import threading
 import distutils.version
+from operator import sub
+import os
+import sys
+import threading
+import time
+import Pyro4
+import System
 
 if (distutils.version.LooseVersion(Pyro4.__version__) >=
     distutils.version.LooseVersion('4.22')):
