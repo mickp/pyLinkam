@@ -42,8 +42,15 @@ if (distutils.version.LooseVersion(Pyro4.__version__) >=
     Pyro4.config.SERIALIZERS_ACCEPTED.add('pickle')
 Pyro4.config.SERIALIZER = 'pickle'
 
+# Cockpit config name
 CONFIG_NAME = 'linkam'
-DLL_PATH = r"C:\b24\pyLinkam\linkam"
+
+# DLL details
+DLL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'linkam')
+DLL_FILE = r"LinkamCommsLibrary.dll"
+DLL_VER = distutils.version.LooseVersion(
+                System.Diagnostics.FileVersionInfo.GetVersionInfo(
+                        os.path.join(DLL_PATH, DLL_FILE)).FileVersion)
 
 sys.path.append(DLL_PATH)
 clr.AddReference(r"LinkamCommsLibrary.dll")
