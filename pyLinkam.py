@@ -52,9 +52,18 @@ DLL_VER = distutils.version.LooseVersion(
                 System.Diagnostics.FileVersionInfo.GetVersionInfo(
                         os.path.join(DLL_PATH, DLL_FILE)).FileVersion)
 
+## Add the DLL to the path and clr, then import LinkamCommsDll.
 sys.path.append(DLL_PATH)
 clr.AddReference(r"LinkamCommsLibrary.dll")
+import Linkam
 import LinkamCommsDll
+
+## Enumerated value types for SetValue and GetValue. Linkam moved the the enum
+# def between versions 1.8.2.0 and 1.8.5.0.
+if DLL_VER >= distutils.version.LooseVersion('1.8.5.0'):
+    eVALUETYPE = Linkam.SharedEnums.eVALUETYPE
+else:
+    eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
 
 
 class _IntParser(object):
@@ -127,8 +136,6 @@ class _StageStatus(_IntParser):
 
 class LinkamStage(object):
     """An interface to Linkam's .net assembly for their stages."""
-    # Enumerated value types for SetValue and GetValue.
-    eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
     XMOTOR_BIT = 2**45
     YMOTOR_BIT = 2**48
 
@@ -199,8 +206,8 @@ class LinkamStage(object):
 
     def _updatePosition(self):
         """Fetch and return the stage's current position as (x, y)."""
-        ValueIDs = (self.eVALUETYPE.u32XMotorPosnR.value__,
-                    self.eVALUETYPE.u32YMotorPosnR.value__)
+        ValueIDs = (eVALUETYPE.u32XMotorPosnR.value__,
+                    eVALUETYPE.u32YMotorPosnR.value__)
         self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
         return self.position
 
@@ -238,8 +245,8 @@ class LinkamStage(object):
         this instance's targetPos.
         """
         self.moving = True
-        xValueID = self.eVALUETYPE.u32XMotorLimitRW.value__
-        yValueID = self.eVALUETYPE.u32YMotorLimitRW.value__
+        xValueID = eVALUETYPE.u32XMotorLimitRW.value__
+        yValueID = eVALUETYPE.u32YMotorLimitRW.value__
         if x:
             self.stage.SetValue(xValueID, x)
             self.stage.StartMotors(True, 0)
@@ -298,7 +305,7 @@ class LinkamStage(object):
         So, we can toggle the state, but not be certain which
         state it is in.
         """
-        enum = self.eVALUETYPE.u32CMS196Light.value__
+        enum = eVALUETYPE.u32CMS196Light.value__
         self.stage.SetValue(enum, 0)
 
 
@@ -334,14 +341,14 @@ class LinkamStage(object):
         # Hunting deviation treshold
         huntingThreshold = 3.5**2
         # Map status values to eVALUETYPEs
-        statusMap = {'bridgeT':self.eVALUETYPE.u32Heater1TempR,
-                     'chamberT':self.eVALUETYPE.u32Heater2TempR,
-                     'dewarT':self.eVALUETYPE.u32Heater3TempR,
-                     'light':self.eVALUETYPE.u32CMS196Light,
-                     'mainFill':self.eVALUETYPE.u32CMS196MainDewarFillSignal,
-                     'sampleFill':self.eVALUETYPE.u32CMS196SampleDewarFillSignal,
-                     'condensor':self.eVALUETYPE.u32CMS196CondensorLedLevel,
-                     'caseHeater':self.eVALUETYPE.u32CMS196Heater,}
+        statusMap = {'bridgeT':eVALUETYPE.u32Heater1TempR,
+                     'chamberT':eVALUETYPE.u32Heater2TempR,
+                     'dewarT':eVALUETYPE.u32Heater3TempR,
+                     'light':eVALUETYPE.u32CMS196Light,
+                     'mainFill':eVALUETYPE.u32CMS196MainDewarFillSignal,
+                     'sampleFill':eVALUETYPE.u32CMS196SampleDewarFillSignal,
+                     'condensor':eVALUETYPE.u32CMS196CondensorLedLevel,
+                     'caseHeater':eVALUETYPE.u32CMS196Heater,}
         # Last time status was sent
         tLastStatus = 0
         # Status update period
