@@ -302,6 +302,11 @@ class LinkamStage(object):
         self.client = self.client = Pyro4.Proxy(uri)
 
 
+    def setMotorSpeed(self, speed):
+        self.stage.SetValue(eVALUETYPE.u32XMotorVelRW.value__, speed)
+        self.stage.SetValue(eVALUETYPE.u32YMotorVelRW.value__, speed)
+
+
     def stopMotors(self):
         for m in [0, 1]:
             self.stage.StartMotors(False, m)
