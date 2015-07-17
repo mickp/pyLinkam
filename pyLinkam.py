@@ -302,6 +302,11 @@ class LinkamStage(object):
         self.client = self.client = Pyro4.Proxy(uri)
 
 
+    def setCondensorLedLevel(self, level):
+        enum = eVALUETYPE.u32CMS196CondensorLedLevel.value__
+        self.stage.SetValue(enum, level)
+
+
     def setMotorSpeed(self, speed):
         self.stage.SetValue(eVALUETYPE.u32XMotorVelRW.value__, speed)
         self.stage.SetValue(eVALUETYPE.u32YMotorVelRW.value__, speed)
