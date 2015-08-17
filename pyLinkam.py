@@ -30,6 +30,7 @@ import ctypes
 import distutils.version
 from operator import sub
 import os
+import signal
 import sys
 import threading
 import time
@@ -140,6 +141,11 @@ class LinkamStage(object):
     YMOTOR_BIT = 2**48
 
 
+    def __del__(self):
+        self._run_flag = False
+        self.statusThread.join()
+
+
     def __init__(self):
         # Comms link to the hardware.
         self.stage = LinkamCommsDll.Comms()
@@ -162,7 +168,8 @@ class LinkamStage(object):
             kickStep = 20, # microns
             settlingTime = 5) # ms
         # A thread to update status.
-        self.statusThread = threading.Thread(target=self._updateStatus)
+        self.statusThread = threading.Thread(target=self._updateStatus,
+                                             name='StatusThread')
         self.statusThread.Daemon = True
         self.statusThread.start()
         # A lock to block the statusThread.
@@ -177,6 +184,8 @@ class LinkamStage(object):
         self.stopMotorsBetweenMoves = True
         # Client to send status updates to
         self.client = None
+        # Run flag.
+        self._run_flag = True
 
     
     def _connectEventHandler(self, sender, eventArgs):
@@ -401,7 +410,7 @@ class LinkamStage(object):
         # Status update period
         tStatusUpdate = 1
 
-        while True:
+        while self._run_flag:
             tNow = time.time()
             if not self.connected:
                 # Try to connect to stage.
@@ -471,6 +480,7 @@ class Server(object):
         self.config = None
         self.run_flag = True
 
+
     def __del__(self):
         self.run_flag = False
         if self.daemon_thread:
@@ -480,6 +490,8 @@ class Server(object):
     def run(self):
         import readconfig
         config = readconfig.config
+
+        Pyro4.config.COMMTIMEOUT = 5.0
 
         host = config.get(CONFIG_NAME, 'ipAddress')
         port = config.getint(CONFIG_NAME, 'port')
@@ -502,8 +514,16 @@ class Server(object):
 
         # Do any cleanup.
         daemon.shutdown()
-
         self.daemon_thread.join()
+
+        # There seems to be a refcounting problem in ironpython.
+        # If I delete self.object, then there should be no more references
+        # to it and it's __del__ method should be called, which should
+        # terminate the statusthread. That does not happen and, since
+        # ironpython doesn't implement getrefcount, I can't chase it down.
+        # Instead, we must call the __del__ method explicitly.
+        # self.object = None
+        self.object.__del__()
 
 
     def stop(self):
@@ -512,8 +532,11 @@ class Server(object):
 
 def main():
     s = Server()
+    # Make SIGINT stop the server.
+    signal.signal(signal.SIGINT, lambda signal, frame: s.stop())
     s.run()
 
 
 if __name__ == '__main__':
     main()
+    os._exit(0)
