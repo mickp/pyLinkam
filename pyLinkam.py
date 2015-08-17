@@ -25,11 +25,17 @@ enable remote calls over Pyro from python instances without
 support for .NET.
 """
 
+DEFAULT_ERRORTHRESHOLD = 0.5 # microns
+DEFAULT_HUNTINGTHRESHOLD = 0.25 # microns
+DEFAULT_KICKSTEP = 2 # microns
+DEFAULT_SETTLINGTIME = 10 # ms
+
 import clr
 import ctypes
 import distutils.version
 from operator import sub
 import os
+import random
 import signal
 import sys
 import threading
@@ -144,6 +150,7 @@ class LinkamStage(object):
     def __del__(self):
         self._run_flag = False
         self.statusThread.join()
+        self.motionThread.join()
 
 
     def __init__(self):
@@ -163,17 +170,23 @@ class LinkamStage(object):
         self.stage.ControllerConnected += self._connectEventHandler
         # Motion control parameters
         self.controlParameters = dict(
-            errorThreshold = 0.5, # microns
-            huntingThreshold = 0.5, # microns
-            kickStep = 20, # microns
-            settlingTime = 5) # ms
+            errorThreshold = DEFAULT_ERRORTHRESHOLD, # microns
+            huntingThreshold = DEFAULT_HUNTINGTHRESHOLD, # microns
+            kickStep = DEFAULT_KICKSTEP, # microns
+            settlingTime = DEFAULT_SETTLINGTIME) # ms
+
         # A thread to update status.
         self.statusThread = threading.Thread(target=self._updateStatus,
                                              name='StatusThread')
         self.statusThread.Daemon = True
         self.statusThread.start()
-        # A lock to block the statusThread.
-        self.statusLock = threading.Lock()
+        # A thread to correct for motion issues.
+        self.motionThread = threading.Thread(target=self._correctMotion,
+                                             name='MotionThread')
+        self.motionThread.Daemon = True
+        self.motionThread.start()
+        # A lock to block on state and status manipulations.
+        self.lock = threading.RLock()
         # Flag to indicate movement status
         self.moving = None
         # Stage position target.
@@ -223,7 +236,8 @@ class LinkamStage(object):
         """Fetch and return the stage's current position as (x, y)."""
         ValueIDs = (eVALUETYPE.u32XMotorPosnR.value__,
                     eVALUETYPE.u32YMotorPosnR.value__)
-        self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
+        with self.lock:
+            self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
         return self.position
 
 
@@ -256,7 +270,7 @@ class LinkamStage(object):
     def _moveToXY(self, x=None, y=None):
         """Move the stage motors - private version.
 
-        Moves the motors without requiring statuslock or updating
+        Moves the motors without requiring self.lock or updating
         this instance's targetPos.
         """
         self.moving = True
@@ -278,10 +292,10 @@ class LinkamStage(object):
         Return as soon as motion is started to avoid timeouts when called
         remotely. Use isMoving() to check movement status.
         """
-        # Grab the statusLock and hold on to it to stop updateStatus 
+        # Grab self.lock and hold on to it to stop updateStatus 
         # clearing the move flag before we have started moving the 
         # stage.
-        with self.statusLock:
+        with self.lock:
             if x:
                 self.targetPos[0] = x
             if y:
@@ -298,7 +312,7 @@ class LinkamStage(object):
         fall over (probably due to too high a call rate) or Pyro
         timeouts (too long between calls).
         """
-        with self.statusLock:
+        with self.lock:
             return self.moving
 
 
@@ -370,32 +384,10 @@ class LinkamStage(object):
 
 
     def _updateStatus(self):
-        """Runs in a separate thread to update status variables.
-
-        Currently, just clears the self.moving flag once stage movement
-        has stopped.
-        
-        As at 2015-04-14, the stage stop bits can frequently report
-        that the stage has stopped before motion has been completed.
-        Instead, we rely on consecutive reads of stage position.
-
-        Then there's the problem of hunting. Often, the stage becomes
-        stuck in a local minimum, and needs perturbing before it will
-        approach closer to the target position. We determine if this
-        is the case by use of a weighted variance as per Finch (2009).
-        """
-        # Delay at end of main loop iterations.
+        """Runs in a separate thread to update status variables."""
+        # Delay between iterations
         sleepBetweenIterations = 0.1
-        # Counts required to exit stop-detection loop.
-        maxCount = 3
-        # Consecutive reads on target
-        onTargetCount = 0
-        # Sliding position average
-        slidingMean = None
-        # Sliding variance
-        slidingVar = None
-        # Sliding statistics weighting factor
-        alpha = 0.33
+
         # Map status values to eVALUETYPEs
         statusMap = {'bridgeT':eVALUETYPE.u32Heater1TempR,
                      'chamberT':eVALUETYPE.u32Heater2TempR,
@@ -408,7 +400,7 @@ class LinkamStage(object):
         # Last time status was sent
         tLastStatus = 0
         # Status update period
-        tStatusUpdate = 1
+        tStatusUpdatePeriod = 1
 
         while self._run_flag:
             tNow = time.time()
@@ -418,19 +410,57 @@ class LinkamStage(object):
                 # Don't hog the CPU.
                 time.sleep(0)
                 # Skip to next iteration.
-                if self.client and (tNow - tLastStatus > tStatusUpdate):
+                if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
                     tLastStatus = tNow
                     self._sendStatus({'connected':False})
                 continue
+            time.sleep(sleepBetweenIterations)
+            if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
+                tLastStatus = tNow
+                # Must cast results to float for non-.NET clients.
+                status = {key: float(self.stage.GetValue(enum.value__))
+                          for key, enum in statusMap.iteritems()}
+                status['time'] = tNow
+                status['connected'] = True
+                self._sendStatus(status)
+
+
+    def _correctMotion(self):
+        # Sleep between interations
+        sleepBetweenIterations = 0.01
+        # Counts required to exit stop-detection loop.
+        maxCount = 3
+        # Consecutive reads on target
+        onTargetCount = 0
+        # Consecutive reads showing hunting
+        huntingCount = 0
+        maxHuntingCount = 10
+        # Sliding position average
+        slidingMean = None
+        # Sliding variance
+        slidingVar = None
+        # Sliding statistics weighting factor
+        alpha = 0.33
+        while self._run_flag:
+            time.sleep(sleepBetweenIterations)
+            if not self.connected:
+                # No connection. Will be fixed by StatusThread.
+                # Don't hog the CPU.
+                time.sleep(1)
+                # Skip to next iteration.
+                continue
             try:
-                pos = self._updatePosition()
+                with self.lock:
+                    pos = self._updatePosition()
+                    targetPos = self.targetPos
+                    moving = self.moving
             except:
                 # There is an issue communicating with the stage.
-                # It is not the status thread's job to fix it, so
+                # It is not the this thread's job to fix it, so
                 # just skip to the next iteration.
                 continue
-            time.sleep(sleepBetweenIterations)
-            if self.moving:
+
+            if moving:
                 # Update the sliding statistics.
                 if slidingMean is None:
                     slidingMean = [p for p in pos]
@@ -441,36 +471,40 @@ class LinkamStage(object):
                     slidingMean = [m + i for (m, i) in zip(slidingMean, incr)]
                     slidingVar = [(1. - alpha) * (v + d * i)
                                   for(v, d, i) in zip(slidingVar, diff, incr)]
-            with self.statusLock:
-                if self.moving and not None in self.targetPos:
-                    positionError = map(sub, self.position, self.targetPos)
-                    if all(abs(p) < self.controlParameters['errorThreshold']
-                            for p in positionError):
-                        onTargetCount += 1
-                        time.sleep(self.controlParameters['settlingTime'] / 1000)
-                    else:
-                        onTargetCount = 0
-                    if onTargetCount >= maxCount:
-                        if self.stopMotorsBetweenMoves:
-                            self.stopMotors()
-                        self.moving = False
 
+            if moving and not None in targetPos:
+                # calculate position error: target - position
+                positionError = map(sub, targetPos, pos)
+                if all(abs(p) < self.controlParameters['errorThreshold']
+                        for p in positionError):
+                    # Both axes on target.
+                    onTargetCount += 1
+                    time.sleep(self.controlParameters['settlingTime'] / 1000)
+                else:
+                    # Not on target
+                    onTargetCount = 0
                     if all(v < self.controlParameters['huntingThreshold']
                             for v in slidingVar):
-                        # The motor is stuck - give it a kick.
-                        self._moveToXY(*[p + self.controlParameters['kickStep']
-                                           for p in self.targetPos])
-                        time.sleep(self.controlParameters['settlingTime'] / 1000)
-                        self._moveToXY(*self.targetPos)
+                        huntingCount += 1
+                    else:
+                        huntingCount = 0
 
-            if self.client and (tNow - tLastStatus > tStatusUpdate):
-                tLastStatus = tNow
-                # Must cast results to float for non-.NET clients.
-                status = {key: float(self.stage.GetValue(enum.value__))
-                          for key, enum in statusMap.iteritems()}
-                status['time'] = tNow
-                status['connected'] = True
-                self._sendStatus(status)
+                if onTargetCount >= maxCount:
+                    # Stable at target position.
+                    if self.stopMotorsBetweenMoves:
+                        self.stopMotors()
+                    with self.lock:
+                        self.moving = False
+                elif huntingCount >= maxHuntingCount:
+                    huntingCount = 0
+                    # The motor is stuck - give it a kick in a random direction.
+                    with self.lock:
+                        delta = self.controlParameters['kickStep']
+                        self._moveToXY(*[p + random.choice((-delta, delta))
+                                       for p in self.targetPos])
+                    time.sleep(self.controlParameters['settlingTime'] / 1000)
+                    with self.lock:
+                        self._moveToXY(*self.targetPos)
 
 
 class Server(object):
