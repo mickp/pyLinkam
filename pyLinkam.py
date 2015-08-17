@@ -155,6 +155,12 @@ class LinkamStage(object):
         self.stage.ControllerDisconnected += self._disconnectEventHandler
         # A handler to detect stage connection events.
         self.stage.ControllerConnected += self._connectEventHandler
+        # Motion control parameters
+        self.controlParameters = dict(
+            errorThreshold = 0.5, # microns
+            huntingThreshold = 0.5, # microns
+            kickStep = 20, # microns
+            settlingTime = 5) # ms
         # A thread to update status.
         self.statusThread = threading.Thread(target=self._updateStatus)
         self.statusThread.Daemon = True
@@ -307,6 +313,30 @@ class LinkamStage(object):
         self.stage.SetValue(enum, level)
 
 
+    def setControlParameters(self, parameters):
+        badParams = False
+        try:
+            n = len(parameters)
+        except TypeError:
+            badParams = True
+        if n != 4:
+            badParams = True
+        if badParams:
+            raise Exception('Control parameters must be a 4-element tuple or list.')
+        self.controlParameters = dict(
+                errorThreshold = parameters[0],
+                huntingThreshold = parameters[1],
+                kickStep = parameters[2],
+                settlingTime = parameters[3])
+
+
+    def getControlParameters(self):
+        return (self.controlParameters['errorThreshold'],
+                self.controlParameters['huntingThreshold'],
+                self.controlParameters['kickStep'],
+                self.controlParameters['settlingTime'])
+
+
     def setMotorSpeed(self, speed):
         self.stage.SetValue(eVALUETYPE.u32XMotorVelRW.value__, speed)
         self.stage.SetValue(eVALUETYPE.u32YMotorVelRW.value__, speed)
@@ -347,8 +377,6 @@ class LinkamStage(object):
         """
         # Delay at end of main loop iterations.
         sleepBetweenIterations = 0.1
-        # Acceptable position error in microns.
-        errorThreshold = 2
         # Counts required to exit stop-detection loop.
         maxCount = 3
         # Consecutive reads on target
@@ -359,8 +387,6 @@ class LinkamStage(object):
         slidingVar = None
         # Sliding statistics weighting factor
         alpha = 0.33
-        # Hunting deviation treshold
-        huntingThreshold = 3.5**2
         # Map status values to eVALUETYPEs
         statusMap = {'bridgeT':eVALUETYPE.u32Heater1TempR,
                      'chamberT':eVALUETYPE.u32Heater2TempR,
@@ -409,18 +435,23 @@ class LinkamStage(object):
             with self.statusLock:
                 if self.moving and not None in self.targetPos:
                     positionError = map(sub, self.position, self.targetPos)
-                    if all(abs(p) < errorThreshold for p in positionError):
+                    if all(abs(p) < self.controlParameters['errorThreshold']
+                            for p in positionError):
                         onTargetCount += 1
+                        time.sleep(self.controlParameters['settlingTime'] / 1000)
                     else:
                         onTargetCount = 0
                     if onTargetCount >= maxCount:
                         if self.stopMotorsBetweenMoves:
                             self.stopMotors()
                         self.moving = False
-                    if all([v < huntingThreshold for v in slidingVar]):
-                        # The motor is stuck.
-                        self._moveToXY(*[p + 100 for p in self.targetPos])
-                        time.sleep(0.1)
+
+                    if all(v < self.controlParameters['huntingThreshold']
+                            for v in slidingVar):
+                        # The motor is stuck - give it a kick.
+                        self._moveToXY(*[p + self.controlParameters['kickStep']
+                                           for p in self.targetPos])
+                        time.sleep(self.controlParameters['settlingTime'] / 1000)
                         self._moveToXY(*self.targetPos)
 
             if self.client and (tNow - tLastStatus > tStatusUpdate):
