@@ -20,14 +20,14 @@ python wrapper for Linkam's T95 interfacing DLL.
 
 Requires .NET Framework 4.5.1 Full.
 
-Note that return values are cast as native python types to 
+Note that return values are cast as native python types to
 enable remote calls over Pyro from python instances without
 support for .NET.
 """
 
-DEFAULT_ERRORTHRESHOLD = 0.5 # microns
-DEFAULT_HUNTINGTHRESHOLD = 0.25 # microns
-DEFAULT_KICKSTEP = 2 # microns
+DEFAULT_ERRORTHRESHOLD = 2.5 # microns
+DEFAULT_HUNTINGTHRESHOLD = 0.1 # microns
+DEFAULT_KICKSTEP = 5 # microns
 DEFAULT_SETTLINGTIME = 10 # ms
 
 import clr
