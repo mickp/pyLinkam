@@ -183,6 +183,8 @@ class LinkamStage(object):
         self.motionThread = threading.Thread(target=self._correctMotion,
                                              name='MotionThread')
         self.motionThread.Daemon = True
+        # A flag to show that we should correct motion issues.
+        self.doMotionCorrection = False
         # A lock to block on state and status manipulations.
         self.lock = threading.RLock()
         # Flag to indicate movement status
@@ -211,6 +213,17 @@ class LinkamStage(object):
             self.motorsHomed = False
         else:
             self.motorsHomed = self.position == oldPosition
+        # Check firmware version.
+        #major, minor = self.stage.GetControllerFirmwareVersion().strip('Vv').split('.')
+        #if int(major) > 2 or (int(major) == 2 and int(minor) >= 41):
+        #    # Motion issues fixed: use simple motion handler.
+        #    self.doMotionCorrection = False
+        #else:
+        #    # Need to correct for motion issues.
+        #    self.doMotionCorrection = True
+
+        # Still have motion issues in firmware 2.41.
+        self.doMotionCorrection = True
 
 
     def _disconnectEventHandler(self, sender, eventArgs):
@@ -449,16 +462,21 @@ class LinkamStage(object):
                 time.sleep(1)
                 # Skip to next iteration.
                 continue
-            try:
+
+            if not self.doMotionCorrection:
+                # Simple case.
                 with self.lock:
-                    pos = self._updatePosition()
-                    targetPos = self.targetPos
-                    moving = self.moving
-            except:
-                # There is an issue communicating with the stage.
-                # It is not the this thread's job to fix it, so
-                # just skip to the next iteration.
+                    self._updatePosition()
+                    status = self.getStatus()
+                    self.moving = not (status.xMotorStopped and status.yMotorStopped)
+                # No need to run motion correction, so continue.
                 continue
+
+            # Only reach here if self.doMotionCorrection is True.
+            with self.lock:
+                pos = self._updatePosition()
+                targetPos = self.targetPos
+                moving = self.moving
 
             if moving:
                 # Update the sliding statistics.
