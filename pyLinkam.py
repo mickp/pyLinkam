@@ -61,7 +61,7 @@ DLL_VER = distutils.version.LooseVersion(
 
 ## Add the DLL to the path and clr, then import LinkamCommsDll.
 sys.path.append(DLL_PATH)
-clr.AddReference(r"LinkamCommsLibrary.dll")
+clr.AddReference(r"LinkamCommsLibrary")
 import Linkam
 import LinkamCommsDll
 
