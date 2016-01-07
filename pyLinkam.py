@@ -179,12 +179,10 @@ class LinkamStage(object):
         self.statusThread = threading.Thread(target=self._updateStatus,
                                              name='StatusThread')
         self.statusThread.Daemon = True
-        self.statusThread.start()
         # A thread to correct for motion issues.
         self.motionThread = threading.Thread(target=self._correctMotion,
                                              name='MotionThread')
         self.motionThread.Daemon = True
-        self.motionThread.start()
         # A lock to block on state and status manipulations.
         self.lock = threading.RLock()
         # Flag to indicate movement status
@@ -199,8 +197,11 @@ class LinkamStage(object):
         self.client = None
         # Run flag.
         self._run_flag = True
+        # Start the threads *after* all properties intialized.
+        self.statusThread.start()
+        self.motionThread.start()
 
-    
+
     def _connectEventHandler(self, sender, eventArgs):
         """Handles stage connection events."""
         self.connected = True
