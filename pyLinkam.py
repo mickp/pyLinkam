@@ -204,6 +204,11 @@ class LinkamStage(object):
         self.motionThread.start()
 
 
+    def setDoMotionCorrection(self, value):
+        self.doMotionCorrection = value
+        return self.doMotionCorrection == value
+
+
     def _connectEventHandler(self, sender, eventArgs):
         """Handles stage connection events."""
         self.connected = True
