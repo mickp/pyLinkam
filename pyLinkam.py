@@ -111,7 +111,7 @@ class _StageConfig(_IntParser):
     def update(self, u64):
         super(_StageConfig, self).update(u64)
         self.stageType = self._stageTypes[u64 & 0b1111111111]
-        
+
 
 class _StageStatus(_IntParser):
     # These bitFields are as per the documentation, but they are incorrect.
@@ -124,7 +124,7 @@ class _StageStatus(_IntParser):
                   'vacuumControlStarted': 6,
                   'vacuumValveTAtMaxVac': 7,
                   'vacuumValveAtAtmos': 8,
-                  'humidityRampAtSetPoint': 9, 
+                  'humidityRampAtSetPoint': 9,
                   'humidityStarted': 10,
                   'coolingPumpPumping': 11,
                   'coolingPumpInAutoMode': 12,
@@ -175,7 +175,6 @@ class LinkamStage(object):
             huntingThreshold = DEFAULT_HUNTINGTHRESHOLD, # microns
             kickStep = DEFAULT_KICKSTEP, # microns
             settlingTime = DEFAULT_SETTLINGTIME) # ms
-
         # A thread to update status.
         self.statusThread = threading.Thread(target=self._updateStatus,
                                              name='StatusThread')
@@ -294,8 +293,8 @@ class LinkamStage(object):
         Return as soon as motion is started to avoid timeouts when called
         remotely. Use isMoving() to check movement status.
         """
-        # Grab self.lock and hold on to it to stop updateStatus 
-        # clearing the move flag before we have started moving the 
+        # Grab self.lock and hold on to it to stop updateStatus
+        # clearing the move flag before we have started moving the
         # stage.
         with self.lock:
             if x:
@@ -307,7 +306,7 @@ class LinkamStage(object):
 
     def isMoving(self):
         """Return whether or not the stage is moving.
-    
+
         This now uses an instance variable instead of testing
         the hardware directly - that required multiple GetStatus
         calls, which lead to either caused the .NET assembly to
