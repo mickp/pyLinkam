@@ -70,7 +70,8 @@ import LinkamCommsDll
 if DLL_VER >= distutils.version.LooseVersion('1.8.5.0'):
     eVALUETYPE = Linkam.SharedEnums.eVALUETYPE
 else:
-    eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
+    # eVALUETYPE = LinkamCommsDll.Comms.eVALUETYPE
+    raise Exception('%s requires Linkam DLL version >= 1.8.5.0')
 
 
 class _IntParser(object):
@@ -235,8 +236,8 @@ class LinkamStage(object):
 
     def _updatePosition(self):
         """Fetch and return the stage's current position as (x, y)."""
-        ValueIDs = (eVALUETYPE.u32XMotorPosnR.value__,
-                    eVALUETYPE.u32YMotorPosnR.value__)
+        ValueIDs = (eVALUETYPE.u32XMotorPosnR,
+                    eVALUETYPE.u32YMotorPosnR)
         with self.lock:
             self.position = tuple((float(self.stage.GetValue(id)) for id in ValueIDs))
         return self.position
@@ -275,8 +276,8 @@ class LinkamStage(object):
         this instance's targetPos.
         """
         self.moving = True
-        xValueID = eVALUETYPE.u32XMotorLimitRW.value__
-        yValueID = eVALUETYPE.u32YMotorLimitRW.value__
+        xValueID = eVALUETYPE.u32XMotorLimitRW
+        yValueID = eVALUETYPE.u32YMotorLimitRW
         if x:
             self.stage.SetValue(xValueID, x)
             self.stage.StartMotors(True, 0)
@@ -333,7 +334,7 @@ class LinkamStage(object):
 
 
     def setCondensorLedLevel(self, level):
-        enum = eVALUETYPE.u32CMS196CondensorLedLevel.value__
+        enum = eVALUETYPE.u32CMS196CondensorLedLevel
         self.stage.SetValue(enum, level)
 
 
@@ -362,8 +363,8 @@ class LinkamStage(object):
 
 
     def setMotorSpeed(self, speed):
-        self.stage.SetValue(eVALUETYPE.u32XMotorVelRW.value__, speed)
-        self.stage.SetValue(eVALUETYPE.u32YMotorVelRW.value__, speed)
+        self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, speed)
+        self.stage.SetValue(eVALUETYPE.u32YMotorVelRW, speed)
 
 
     def stopMotors(self):
@@ -380,7 +381,7 @@ class LinkamStage(object):
         So, we can toggle the state, but not be certain which
         state it is in.
         """
-        enum = eVALUETYPE.u32CMS196Light.value__
+        enum = eVALUETYPE.u32CMS196Light
         self.stage.SetValue(enum, 0)
 
 
@@ -408,18 +409,17 @@ class LinkamStage(object):
             if not self.connected:
                 # Try to connect to stage.
                 self._connect()
-                # Don't hog the CPU.
-                time.sleep(0)
                 # Skip to next iteration.
                 if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
                     tLastStatus = tNow
                     self._sendStatus({'connected':False})
+                time.sleep(1)
                 continue
             time.sleep(sleepBetweenIterations)
             if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
                 tLastStatus = tNow
                 # Must cast results to float for non-.NET clients.
-                status = {key: float(self.stage.GetValue(enum.value__))
+                status = {key: float(self.stage.GetValue(enum))
                           for key, enum in statusMap.iteritems()}
                 status['time'] = tNow
                 status['connected'] = True
