@@ -29,12 +29,12 @@ DEFAULT_ERRORTHRESHOLD = 2.5 # microns
 DEFAULT_HUNTINGTHRESHOLD = 0.1 # microns
 DEFAULT_KICKSTEP = 5 # microns
 DEFAULT_SETTLINGTIME = 10 # ms
+import os
 
 import clr
 import ctypes
 import distutils.version
 from operator import sub
-import os
 import random
 import signal
 import sys
@@ -46,6 +46,7 @@ import System
 if (distutils.version.LooseVersion(Pyro4.__version__) >=
     distutils.version.LooseVersion('4.22')):
     Pyro4.config.SERIALIZERS_ACCEPTED.discard('serpent')
+    Pyro4.config.SERIALIZERS_ACCEPTED.discard('json')
     Pyro4.config.SERIALIZERS_ACCEPTED.add('pickle')
 Pyro4.config.SERIALIZER = 'pickle'
 
@@ -337,17 +338,20 @@ class LinkamStage(object):
 
     def _sendStatus(self, status):
         """Send status to any client."""
-        try:
-            self.client.receiveData(status)
-        except (Pyro4.errors.PyroError):
-            # Something happened to the client.
-            pass
-        except:
-            raise
+        if not self.client:
+            return
+        with Pyro4.Proxy(self.client) as proxy:
+            try:
+                proxy.receiveData(status)
+            except (Pyro4.errors.PyroError):
+                # Something happened to the client.
+                pass
+            except:
+                raise
 
 
     def setClient(self, uri):
-        self.client = self.client = Pyro4.Proxy(uri)
+        self.client = uri
 
 
     def setCondensorLedLevel(self, level):
