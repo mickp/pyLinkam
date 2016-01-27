@@ -25,9 +25,9 @@ enable remote calls over Pyro from python instances without
 support for .NET.
 """
 
-DEFAULT_ERRORTHRESHOLD = 2.5 # microns
+DEFAULT_ERRORTHRESHOLD = 10.0 # microns
 DEFAULT_HUNTINGTHRESHOLD = 0.1 # microns
-DEFAULT_KICKSTEP = 5 # microns
+DEFAULT_KICKSTEP = 10 # microns
 DEFAULT_SETTLINGTIME = 10 # ms
 import os
 
@@ -463,6 +463,8 @@ class LinkamStage(object):
         slidingVar = None
         # Sliding statistics weighting factor
         alpha = 0.33
+        # Were we moving on the last iteration?
+        wasMoving = False
         while self._run_flag:
             time.sleep(sleepBetweenIterations)
             if not self.connected:
@@ -476,8 +478,23 @@ class LinkamStage(object):
                 # Simple case.
                 with self.lock:
                     self._updatePosition()
-                    status = self.getStatus()
-                    self.moving = not (status.xMotorStopped and status.yMotorStopped)
+                    if self.moving:
+                        if not(wasMoving):
+                            # Just started moving.
+                            # Delay 200ms to allow firmware to update status bits.
+                            time.sleep(0.2)
+                            wasMoving = True
+                            # ===STILL CAN'T TRUST THE STATUS BITS===
+                            # This still doesn't work: the status bits are still junk.
+                            # Often one or both will never show True, even after the move
+                            # has been completed. Other times, they both show True, even
+                            # 200ms after a move has been initiated. With this behaviour,
+                            # they are (worse than) useless.
+                        status = self.getStatus()
+                        self.moving = not (status.xMotorStopped and status.yMotorStopped)
+                        if self.stopMotorsBetweenMoves and not(self.moving):
+                            self.stopMotors()
+                            wasMoving = False
                 # No need to run motion correction, so continue.
                 continue
 
