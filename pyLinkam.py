@@ -200,6 +200,8 @@ class LinkamStage(object):
         self.client = None
         # Run flag.
         self._run_flag = True
+        # A dict of status variables (distinct from the stage status object).
+        self.statusDict = {}
         # Start the threads *after* all properties intialized.
         self.statusThread.start()
         self.motionThread.start()
@@ -270,7 +272,7 @@ class LinkamStage(object):
             return self.position
 
 
-    def getStatus(self):
+    def _getStatus(self):
         statusWord = self.stage.GetStatus()
         self.status.update(statusWord)
         return self.status
@@ -350,10 +352,6 @@ class LinkamStage(object):
                 raise
 
 
-    def setClient(self, uri):
-        self.client = uri
-
-
     def setCondensorLedLevel(self, level):
         enum = eVALUETYPE.u32CMS196CondensorLedLevel
         self.stage.SetValue(enum, level)
@@ -409,7 +407,7 @@ class LinkamStage(object):
     def _updateStatus(self):
         """Runs in a separate thread to update status variables."""
         # Delay between iterations
-        sleepBetweenIterations = 0.1
+        sleepBetweenIterations = 0.2
 
         # Map status values to eVALUETYPEs
         statusMap = {'bridgeT':eVALUETYPE.u32Heater1TempR,
@@ -426,25 +424,26 @@ class LinkamStage(object):
         tStatusUpdatePeriod = 1
 
         while self._run_flag:
+            time.sleep(sleepBetweenIterations)
             tNow = time.time()
             if not self.connected:
+                self.statusDict['connected'] = False
+                self.statusDict['time'] = tNow
                 # Try to connect to stage.
                 self._connect()
                 # Skip to next iteration.
-                if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
-                    tLastStatus = tNow
-                    self._sendStatus({'connected':False})
-                time.sleep(1)
                 continue
-            time.sleep(sleepBetweenIterations)
-            if self.client and (tNow - tLastStatus > tStatusUpdatePeriod):
-                tLastStatus = tNow
-                # Must cast results to float for non-.NET clients.
-                status = {key: float(self.stage.GetValue(enum))
-                          for key, enum in statusMap.iteritems()}
-                status['time'] = tNow
-                status['connected'] = True
-                self._sendStatus(status)
+            # Must cast results to float for non-.NET clients.
+            status = {key: float(self.stage.GetValue(enum))
+                         for key, enum in statusMap.iteritems()}
+            status['connected'] = True
+            status['time'] = tNow
+            self.statusDict = status
+
+
+    def getStatus(self):
+        """Return status dict to client."""
+        return self.statusDict
 
 
     def _correctMotion(self):
@@ -490,7 +489,7 @@ class LinkamStage(object):
                             # has been completed. Other times, they both show True, even
                             # 200ms after a move has been initiated. With this behaviour,
                             # they are (worse than) useless.
-                        status = self.getStatus()
+                        status = self._getStatus()
                         self.moving = not (status.xMotorStopped and status.yMotorStopped)
                         if self.stopMotorsBetweenMoves and not(self.moving):
                             self.stopMotors()
