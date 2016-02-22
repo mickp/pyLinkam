@@ -385,6 +385,13 @@ class LinkamStage(object):
                 self.controlParameters['settlingTime'])
 
 
+    def getThreads(self):
+        threads = []
+        for t in threading.enumerate():
+            threads.append(t.getName())
+        return threads
+
+
     def setMotorSpeed(self, speed):
         if speed:
             self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, speed)
