@@ -196,6 +196,8 @@ class LinkamStage(object):
         self.position = (None, None)
         # Flag to indicate stop motors after move
         self.stopMotorsBetweenMoves = True
+        # Saved motor speed.
+        self.motorSpeed = None
         # Client to send status updates to
         self.client = None
         # Run flag.
@@ -323,6 +325,8 @@ class LinkamStage(object):
             if y:
                 self.targetPos[1] = y
             self._moveToXY(*self.targetPos)
+            # Motor speed resets on motor stop, so set saved value.
+            self.setMotorSpeed(self.motorSpeed)
 
 
     def isMoving(self):
@@ -382,8 +386,10 @@ class LinkamStage(object):
 
 
     def setMotorSpeed(self, speed):
-        self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, speed)
-        self.stage.SetValue(eVALUETYPE.u32YMotorVelRW, speed)
+        if speed:
+            self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, speed)
+            self.stage.SetValue(eVALUETYPE.u32YMotorVelRW, speed)
+            self.motorSpeed = speed
 
 
     def stopMotors(self):
