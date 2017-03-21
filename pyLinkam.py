@@ -196,8 +196,8 @@ class LinkamStage(object):
         self.position = (None, None)
         # Flag to indicate stop motors after move
         self.stopMotorsBetweenMoves = True
-        # Saved motor speed.
-        self.motorSpeed = None
+        # Saved motor speed. Default to 300.
+        self.motorSpeed = 300
         # Client to send status updates to
         self.client = None
         # Run flag.
@@ -224,16 +224,13 @@ class LinkamStage(object):
         else:
             self.motorsHomed = self.position == oldPosition
         # Check firmware version.
-        #major, minor = self.stage.GetControllerFirmwareVersion().strip('Vv').split('.')
-        #if int(major) > 2 or (int(major) == 2 and int(minor) >= 41):
-        #    # Motion issues fixed: use simple motion handler.
-        #    self.doMotionCorrection = False
-        #else:
-        #    # Need to correct for motion issues.
-        #    self.doMotionCorrection = True
-
-        # Still have motion issues in firmware 2.41.
-        self.doMotionCorrection = True
+        major, minor = self.stage.GetControllerFirmwareVersion().strip('Vv').split('.')
+        if int(major) > 2 or (int(major) == 2 and int(minor) >= 41):
+            # Motion issues fixed: use simple motion handler.
+            self.doMotionCorrection = False
+        else:
+            # Need to correct for motion issues.
+            self.doMotionCorrection = True
 
 
     def _disconnectEventHandler(self, sender, eventArgs):
@@ -297,9 +294,12 @@ class LinkamStage(object):
         Moves the motors without requiring self.lock or updating
         this instance's targetPos.
         """
-        self.moving = True
+        with self.lock:
+            self.moving = True
         xValueID = eVALUETYPE.u32XMotorLimitRW
         yValueID = eVALUETYPE.u32YMotorLimitRW
+        # Update the motor speed. Needed for SDK > 2.?
+        self.setMotorSpeed()
         if x:
             self.stage.SetValue(xValueID, x)
             self.stage.StartMotors(True, 0)
@@ -392,11 +392,11 @@ class LinkamStage(object):
         return threads
 
 
-    def setMotorSpeed(self, speed):
+    def setMotorSpeed(self, speed=None):
         if speed:
-            self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, speed)
-            self.stage.SetValue(eVALUETYPE.u32YMotorVelRW, speed)
             self.motorSpeed = speed
+        self.stage.SetValue(eVALUETYPE.u32XMotorVelRW, self.motorSpeed)
+        self.stage.SetValue(eVALUETYPE.u32YMotorVelRW, self.motorSpeed)
 
 
     def stopMotors(self):
@@ -459,9 +459,15 @@ class LinkamStage(object):
         return self.statusDict
 
 
+    def getMotorsStopped(self):
+        """Return state of motors stopped bits."""
+        status = self._getStatus()
+        return (status.xMotorStopped, status.yMotorStopped)
+
+
     def _correctMotion(self):
         # Sleep between interations
-        sleepBetweenIterations = 0.01
+        sleepBetweenIterations = 0.05
         # Counts required to exit stop-detection loop.
         maxCount = 3
         # Consecutive reads on target
@@ -477,6 +483,8 @@ class LinkamStage(object):
         alpha = 0.33
         # Were we moving on the last iteration?
         wasMoving = False
+        # Last position
+        lastPos = (-1000, -1000)
         while self._run_flag:
             time.sleep(sleepBetweenIterations)
             if not self.connected:
@@ -488,25 +496,38 @@ class LinkamStage(object):
 
             if not self.doMotionCorrection:
                 # Simple case.
-                with self.lock:
-                    self._updatePosition()
-                    if self.moving:
-                        if not(wasMoving):
-                            # Just started moving.
-                            # Delay 200ms to allow firmware to update status bits.
-                            time.sleep(0.2)
-                            wasMoving = True
-                            # ===STILL CAN'T TRUST THE STATUS BITS===
-                            # This still doesn't work: the status bits are still junk.
-                            # Often one or both will never show True, even after the move
-                            # has been completed. Other times, they both show True, even
-                            # 200ms after a move has been initiated. With this behaviour,
-                            # they are (worse than) useless.
-                        status = self._getStatus()
+                self._updatePosition()
+                if self.moving:
+                    if not(wasMoving):
+                        # Just started moving.
+                        # Delay 600ms to allow firmware to update status bits.
+                        wasMoving = True
+                        t0 = time.clock()
+
+                    if time.clock() - t0 < 0.6:
+                        continue
+
+                    status = self._getStatus()
+
+                    with self.lock:
                         self.moving = not (status.xMotorStopped and status.yMotorStopped)
-                        if self.stopMotorsBetweenMoves and not(self.moving):
-                            self.stopMotors()
-                            wasMoving = False
+                        # Detect sticky False motor stopped bits.
+                        if self.moving and wasMoving:
+                            delta = [l - p for l, p in zip(lastPos, self.position)]
+                            delta = delta[0]**2 + delta[1]**2
+                            lastPos = self.position
+                            if delta < 0.2:
+                                count += 1
+                            else:
+                                count = 0
+                            if count > maxCount:
+                                # stuck bit
+                                with self.lock:
+                                    self.moving = False
+
+                    if self.stopMotorsBetweenMoves and not(self.moving):
+                        self.stopMotors()
+                    wasMoving = self.moving
                 # No need to run motion correction, so continue.
                 continue
 
