@@ -142,7 +142,7 @@ class _StageStatus(_IntParser):
                   'heater1SampleCalibrationApplied': 50,
                   }
 
-
+@Pyro4.expose
 class LinkamStage(object):
     """An interface to Linkam's .net assembly for their stages."""
     XMOTOR_BIT = 2**45
